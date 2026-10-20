@@ -3479,6 +3479,24 @@ static void nvApplyRequestedDisplayArea(NVContext *nvCtx) {
     nvCtx->appliedDisplayHeight = nvCtx->requestedDisplayHeight;
 }
 
+static void abortDecodePicture(NVContext *nvCtx) {
+    if (nvCtx->codec->abortPicture != NULL) {
+        nvCtx->codec->abortPicture(nvCtx);
+        return;
+    }
+
+    // BeginPicture marked the render target resolving, but a context-stack
+    // error returns before it is queued. No resolver can release its waiters.
+    // A distinct AV1 display target has not been marked for this submission
+    // yet, so leave its earlier work alone. Do not access the render target
+    // after releasing its flag: a destroy waiter may immediately free it.
+    NVSurface *renderTarget = nvCtx->renderTarget;
+    if (renderTarget != NULL) {
+        renderTarget->decodeFailed = true;
+        setSurfaceResolving(renderTarget, false);
+    }
+}
+
 static VAStatus nvEndPicture(
         VADriverContextP ctx,
         VAContextID context
@@ -3523,7 +3541,7 @@ static VAStatus nvEndPicture(
     nvCtx->sliceOffsets.size = 0;
 
     if (CHECK_CUDA_RESULT(cu->cuCtxPushCurrent(drv->cudaContext))) {
-        if (nvCtx->codec != NULL && nvCtx->codec->abortPicture != NULL) nvCtx->codec->abortPicture(nvCtx);
+        abortDecodePicture(nvCtx);
         endDecodeCall(drv, nvCtx);
         return VA_STATUS_ERROR_OPERATION_FAILED;
     }
@@ -3543,7 +3561,7 @@ static VAStatus nvEndPicture(
         nvCtx->decoderHasDecoded = true;
     }
     if (CHECK_CUDA_RESULT(cu->cuCtxPopCurrent(NULL))) {
-        if (nvCtx->codec != NULL && nvCtx->codec->abortPicture != NULL) nvCtx->codec->abortPicture(nvCtx);
+        abortDecodePicture(nvCtx);
         endDecodeCall(drv, nvCtx);
         return VA_STATUS_ERROR_OPERATION_FAILED;
     }

@@ -126,3 +126,28 @@ meson.add_devenv(environment({
     'LIBVA_DRIVER_NAME': 'nvidia',
     'LIBVA_DRIVERS_PATH': meson.project_build_root(),
 }))
+
+# CPU-only regression tests: inject CUDA failures without loading a GPU driver.
+unit_sources = ['tests/test_end_picture_cuda_error.c']
+foreach source : sources
+    if source != 'src/vabackend.c'
+        unit_sources += [source]
+    endif
+endforeach
+end_picture_test = executable(
+    'test_end_picture_cuda_error',
+    sources: unit_sources,
+    dependencies: deps,
+    include_directories: nvidia_incdir,
+    link_args: ['-Wl,--wrap=dlopen'],
+)
+foreach failure : ['push', 'pop', 'success']
+    test('end_picture_cuda_' + failure, end_picture_test,
+         args: [failure], suite: 'cpu', timeout: 5)
+endforeach
+foreach failure : ['push', 'pop']
+    test('end_picture_cuda_' + failure + '_distinct_display', end_picture_test,
+         args: [failure, 'distinct-display'], suite: 'cpu', timeout: 5)
+    test('end_picture_cuda_' + failure + '_codec_abort', end_picture_test,
+         args: [failure, 'codec-abort'], suite: 'cpu', timeout: 5)
+endforeach

@@ -203,3 +203,21 @@ To verify that the driver is being used to decode video, you can use nvidia-sett
 - nvidia-smi
 
   Running `nvidia-smi` while decoding a video should show a Firefox process with `C` in the `Type` column. In addition `nvidia-smi pmon` will show the usage of the decode engine per-process, and `nvidia-smi dmon` will show the usage per-GPU. When using nvidia open gpu kernel modules, the usage of the decode engine may not be displayed correctly.
+
+## CPU-only error-path tests
+
+These tests exercise the real BeginPicture, EndPicture and SyncSurface paths
+with injected CUDA context push/pop failures. The test executable blocks
+`dlopen`, including in the driver constructor, so it cannot load the real CUDA
+library. No GPU or display connection is needed.
+
+```sh
+meson setup build -D werror=true
+meson compile -C build
+meson test -C build --suite cpu --print-errorlogs
+```
+
+The existing AV1 and picture-index integration tests use the GPU. An unfiltered
+`meson test` also runs those tests; use `--suite cpu` for error-path work on a
+machine whose display uses the same GPU. Passing the CPU tests verifies error
+handling, and does not establish that a browser or compositor freeze is fixed.
